@@ -1,8 +1,34 @@
 use eframe::egui;
 use std::collections::HashSet;
-use io::std;
+use std::io;
 
-const BOARD_SIZE: usize = 19;
+const VALID_BOARD_SIZES: &[usize] = &[9, 13, 19];
+const STAR_POINTS_9X9: &[(usize, usize)] = &[
+    (2, 2),
+    (2, 6),
+    (4, 4),
+    (6, 2),
+    (6, 6),
+];
+const STAR_POINTS_13X13: &[(usize, usize)] = &[
+    (3, 3),
+    (3, 9),
+    (6, 6),
+    (9, 3),
+    (9, 9),
+];
+const STAR_POINTS_19X19: &[(usize, usize)] = &[
+    (3, 3),
+    (3, 9),
+    (3, 15),
+    (9, 3),
+    (9, 9),
+    (9, 15),
+    (15, 3),
+    (15, 9),
+    (15, 15),
+];
+const DEFAULT_BOARD_SIZE: usize = 19;
 const CELL_SIZE: f32 = 30.0;
 const STONE_RADIUS: f32 = 12.0;
 const TITLE: &str = "Go Game";
@@ -36,7 +62,8 @@ impl Player {
 }
 
 struct GoBoard {
-    board: [[Stone; BOARD_SIZE]; BOARD_SIZE],
+    board_size: usize,
+    board: Vec<Vec<Stone>>,
     current_player: Player,
     captured_black: u32,
     captured_white: u32,
@@ -47,7 +74,8 @@ struct GoBoard {
 impl Default for GoBoard {
     fn default() -> Self {
         Self {
-            board: [[Stone::Empty; BOARD_SIZE]; BOARD_SIZE],
+            board_size: DEFAULT_BOARD_SIZE,
+            board: vec![vec![Stone::Empty; DEFAULT_BOARD_SIZE]; DEFAULT_BOARD_SIZE],
             current_player: Player::Black,
             captured_black: 0,
             captured_white: 0,
@@ -58,8 +86,20 @@ impl Default for GoBoard {
 }
 
 impl GoBoard {
-    fn new() -> Self {
+    fn _new() -> Self {
         Self::default()
+    }
+
+    fn with_size(board_size_param: usize) -> Self {
+        GoBoard {
+            board_size: board_size_param,
+            board: vec![vec![Stone::Empty; board_size_param]; board_size_param],
+            current_player: Player::Black,
+            captured_black: 0,
+            captured_white: 0,
+            game_over: false,
+            last_move: None,
+        }
     }
 
     fn reset(&mut self) {
@@ -73,9 +113,9 @@ impl GoBoard {
             let new_row = row as i32 + dr;
             let new_col = col as i32 + dc;
             if new_row >= 0
-                && new_row < BOARD_SIZE as i32
+                && new_row < self.board_size as i32
                 && new_col >= 0
-                && new_col < BOARD_SIZE as i32
+                && new_col < self.board_size as i32
             {
                 neighbors.push((new_row as usize, new_col as usize));
             }
@@ -119,8 +159,8 @@ impl GoBoard {
     fn capture_stones(&mut self, opponent: Stone) -> u32 {
         let mut captured = 0;
         let mut to_remove = Vec::new();
-        for row in 0..BOARD_SIZE {
-            for col in 0..BOARD_SIZE {
+        for row in 0..self.board_size {
+            for col in 0..self.board_size {
                 if self.board[row][col] == opponent && !self.has_liberties(row, col) {
                     let group = self.get_group(row, col, opponent);
                     for &(r, c) in &group {
@@ -272,20 +312,20 @@ impl eframe::App for GoBoard {
             });
             ui.separator();
             // Calculate board dimensions
-            let board_size = CELL_SIZE * (BOARD_SIZE as f32 + 1.0);
+            let board_size = CELL_SIZE * (self.board_size as f32 + 1.0);
             let (response, painter) =
                 ui.allocate_painter(egui::Vec2::splat(board_size), egui::Sense::click());
             let board_rect = response.rect;
             let top_left = board_rect.min + egui::Vec2::splat(CELL_SIZE * 0.5);
             // Draw grid lines
             let line_color = egui::Color32::from_rgb(101, 67, 33);
-            for i in 0..BOARD_SIZE {
+            for i in 0..self.board_size {
                 let offset = i as f32 * CELL_SIZE;
                 // Horizontal lines
                 painter.line_segment(
                     [
                         top_left + egui::Vec2::new(0.0, offset),
-                        top_left + egui::Vec2::new((BOARD_SIZE - 1) as f32 * CELL_SIZE, offset),
+                        top_left + egui::Vec2::new((self.board_size - 1) as f32 * CELL_SIZE, offset),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
@@ -293,31 +333,31 @@ impl eframe::App for GoBoard {
                 painter.line_segment(
                     [
                         top_left + egui::Vec2::new(offset, 0.0),
-                        top_left + egui::Vec2::new(offset, (BOARD_SIZE - 1) as f32 * CELL_SIZE),
+                        top_left + egui::Vec2::new(offset, (self.board_size - 1) as f32 * CELL_SIZE),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
             }
             // Draw star points (handicap points)
-            let star_points = [
-                (3, 3),
-                (3, 9),
-                (3, 15),
-                (9, 3),
-                (9, 9),
-                (9, 15),
-                (15, 3),
-                (15, 9),
-                (15, 15),
-            ];
-            for &(row, col) in &star_points {
+            let star_points: &[(usize, usize)];
+            if self.board_size == VALID_BOARD_SIZES[0] {
+                star_points = STAR_POINTS_9X9;
+            }
+            else if self.board_size == VALID_BOARD_SIZES[1] {
+                star_points = STAR_POINTS_13X13;
+            }
+            else {
+                star_points = STAR_POINTS_19X19;
+            }
+
+            for &(row, col) in star_points {
                 let pos =
                     top_left + egui::Vec2::new(col as f32 * CELL_SIZE, row as f32 * CELL_SIZE);
                 painter.circle_filled(pos, 3.0, line_color);
             }
             // Draw stones
-            for row in 0..BOARD_SIZE {
-                for col in 0..BOARD_SIZE {
+            for row in 0..self.board_size {
+                for col in 0..self.board_size {
                     let stone = self.board[row][col];
                     if stone != Stone::Empty {
                         let pos = top_left
@@ -360,7 +400,7 @@ impl eframe::App for GoBoard {
                     let rel_pos = pos - top_left;
                     let col = ((rel_pos.x + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
                     let row = ((rel_pos.y + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
-                    if row < BOARD_SIZE && col < BOARD_SIZE {
+                    if row < self.board_size && col < self.board_size {
                         self.make_move(row, col);
                     }
                 }
@@ -370,7 +410,7 @@ impl eframe::App for GoBoard {
                 let rel_pos = hover_pos - top_left;
                 let col = ((rel_pos.x + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
                 let row = ((rel_pos.y + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
-                if row < BOARD_SIZE && col < BOARD_SIZE && self.board[row][col] == Stone::Empty {
+                if row < self.board_size && col < self.board_size && self.board[row][col] == Stone::Empty {
                     let pos =
                         top_left + egui::Vec2::new(col as f32 * CELL_SIZE, row as f32 * CELL_SIZE);
                     let is_valid = self.is_valid_move(row, col);
@@ -386,17 +426,47 @@ impl eframe::App for GoBoard {
         });
     }
 }
+ 
+fn get_board_size(prompt: &str) -> usize {
+    loop {
+        println!("{}", prompt);
+         
+        let mut input = String::new();
+         
+        // Read input from stdin
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                let trimmed = input.trim();
+
+                // Check if input is empty (user pressed Enter)
+                if trimmed.is_empty() {
+                    println!("Proceeding with default board size.");
+                    return DEFAULT_BOARD_SIZE
+                }
+                
+                // Try to parse the input as an integer
+                match trimmed.parse::<usize>() {
+                    Ok(number) => {
+                        if VALID_BOARD_SIZES.contains(&number) {
+                            return number
+                        }
+                        else {
+                            println!("Invalid input. Please enter a valid integer.")
+                        }
+                    },
+                    Err(_) => println!("Invalid input. Please enter a valid integer."),
+                }
+            }
+            Err(error) => {
+                println!("Error reading input: {}", error);
+                continue;
+            }
+        }
+    }
+}
 
 fn main() -> Result<(), eframe::Error> {
-    // TODO: add support to re-size board
-    // while (BOARD_SIZE < 9) && (19 < BOARD_SIZE) {
-    //     println!("Enter a board size from 9 to 19:");
-    //     let mut input = String::new();
-    //     io::stdin()
-    //         .read_line(&mut input)
-    //         .expect("Failed to read line.");
-    //     BOARD_SIZE = input.trim().parse().expect("Invalid board size.");
-    // }
+    let inputted_board_size = get_board_size("Please enter a board size of 9, 13, or 19 (press Enter for 19): ");
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -404,5 +474,5 @@ fn main() -> Result<(), eframe::Error> {
             .with_title(TITLE),
         ..Default::default()
     };
-    eframe::run_native(TITLE, options, Box::new(|_cc| Ok(Box::new(GoBoard::new()))))
+    eframe::run_native(TITLE, options, Box::new(|_cc| Ok(Box::new(GoBoard::with_size(inputted_board_size)))))
 }
