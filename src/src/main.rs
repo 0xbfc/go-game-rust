@@ -3,20 +3,8 @@ use std::collections::HashSet;
 use std::io;
 
 const VALID_BOARD_SIZES: &[usize] = &[9, 13, 19];
-const STAR_POINTS_9X9: &[(usize, usize)] = &[
-    (2, 2),
-    (2, 6),
-    (4, 4),
-    (6, 2),
-    (6, 6),
-];
-const STAR_POINTS_13X13: &[(usize, usize)] = &[
-    (3, 3),
-    (3, 9),
-    (6, 6),
-    (9, 3),
-    (9, 9),
-];
+const STAR_POINTS_9X9: &[(usize, usize)] = &[(2, 2), (2, 6), (4, 4), (6, 2), (6, 6)];
+const STAR_POINTS_13X13: &[(usize, usize)] = &[(3, 3), (3, 9), (6, 6), (9, 3), (9, 9)];
 const STAR_POINTS_19X19: &[(usize, usize)] = &[
     (3, 3),
     (3, 9),
@@ -32,6 +20,7 @@ const DEFAULT_BOARD_SIZE: usize = 19;
 const CELL_SIZE: f32 = 30.0;
 const STONE_RADIUS: f32 = 12.0;
 const TITLE: &str = "Go Game";
+const WINDOW_SIZE: [f32; 2] = [800.0, 850.0];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Stone {
@@ -178,11 +167,10 @@ impl GoBoard {
 
     fn would_capture_opponent(&self, row: usize, col: usize, player: Player) -> bool {
         let opponent_stone = player.other().to_stone();
-        let player_stone = player.to_stone();
         for (nr, nc) in self.get_neighbors(row, col) {
             if self.board[nr][nc] == opponent_stone {
                 // Check if this opponent group would have no liberties after our move
-                if self.would_group_be_captured(nr, nc, opponent_stone, row, col, player_stone) {
+                if self.would_group_be_captured(nr, nc, opponent_stone, row, col) {
                     return true;
                 }
             }
@@ -196,7 +184,6 @@ impl GoBoard {
         group_stone: Stone,
         new_stone_row: usize,
         new_stone_col: usize,
-        new_stone: Stone,
     ) -> bool {
         let group = self.get_group(group_row, group_col, group_stone);
         for &(r, c) in &group {
@@ -325,7 +312,8 @@ impl eframe::App for GoBoard {
                 painter.line_segment(
                     [
                         top_left + egui::Vec2::new(0.0, offset),
-                        top_left + egui::Vec2::new((self.board_size - 1) as f32 * CELL_SIZE, offset),
+                        top_left
+                            + egui::Vec2::new((self.board_size - 1) as f32 * CELL_SIZE, offset),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
@@ -333,7 +321,8 @@ impl eframe::App for GoBoard {
                 painter.line_segment(
                     [
                         top_left + egui::Vec2::new(offset, 0.0),
-                        top_left + egui::Vec2::new(offset, (self.board_size - 1) as f32 * CELL_SIZE),
+                        top_left
+                            + egui::Vec2::new(offset, (self.board_size - 1) as f32 * CELL_SIZE),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
@@ -342,11 +331,9 @@ impl eframe::App for GoBoard {
             let star_points: &[(usize, usize)];
             if self.board_size == VALID_BOARD_SIZES[0] {
                 star_points = STAR_POINTS_9X9;
-            }
-            else if self.board_size == VALID_BOARD_SIZES[1] {
+            } else if self.board_size == VALID_BOARD_SIZES[1] {
                 star_points = STAR_POINTS_13X13;
-            }
-            else {
+            } else {
                 star_points = STAR_POINTS_19X19;
             }
 
@@ -410,7 +397,10 @@ impl eframe::App for GoBoard {
                 let rel_pos = hover_pos - top_left;
                 let col = ((rel_pos.x + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
                 let row = ((rel_pos.y + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
-                if row < self.board_size && col < self.board_size && self.board[row][col] == Stone::Empty {
+                if row < self.board_size
+                    && col < self.board_size
+                    && self.board[row][col] == Stone::Empty
+                {
                     let pos =
                         top_left + egui::Vec2::new(col as f32 * CELL_SIZE, row as f32 * CELL_SIZE);
                     let is_valid = self.is_valid_move(row, col);
@@ -426,13 +416,13 @@ impl eframe::App for GoBoard {
         });
     }
 }
- 
+
 fn get_board_size(prompt: &str) -> usize {
     loop {
         println!("{}", prompt);
-         
+
         let mut input = String::new();
-         
+
         // Read input from stdin
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
@@ -441,19 +431,18 @@ fn get_board_size(prompt: &str) -> usize {
                 // Check if input is empty (user pressed Enter)
                 if trimmed.is_empty() {
                     println!("Proceeding with default board size.");
-                    return DEFAULT_BOARD_SIZE
+                    return DEFAULT_BOARD_SIZE;
                 }
-                
+
                 // Try to parse the input as an integer
                 match trimmed.parse::<usize>() {
                     Ok(number) => {
                         if VALID_BOARD_SIZES.contains(&number) {
-                            return number
-                        }
-                        else {
+                            return number;
+                        } else {
                             println!("Invalid input. Please enter a valid integer.")
                         }
-                    },
+                    }
                     Err(_) => println!("Invalid input. Please enter a valid integer."),
                 }
             }
@@ -466,13 +455,18 @@ fn get_board_size(prompt: &str) -> usize {
 }
 
 fn main() -> Result<(), eframe::Error> {
-    let inputted_board_size = get_board_size("Please enter a board size of 9, 13, or 19 (press Enter for 19): ");
+    let inputted_board_size =
+        get_board_size("Please enter a board size of 9, 13, or 19 (press Enter for 19): ");
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 850.0])
+            .with_inner_size(WINDOW_SIZE)
             .with_title(TITLE),
         ..Default::default()
     };
-    eframe::run_native(TITLE, options, Box::new(|_cc| Ok(Box::new(GoBoard::with_size(inputted_board_size)))))
+    eframe::run_native(
+        TITLE,
+        options,
+        Box::new(|_cc| Ok(Box::new(GoBoard::with_size(inputted_board_size)))),
+    )
 }
