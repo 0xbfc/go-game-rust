@@ -16,6 +16,48 @@ enum Player {
     White,
 }
 
+enum AppState {
+    Options,
+    Game,
+}
+
+fn get_board_size(prompt: &str) -> usize {
+    loop {
+        println!("{}", prompt);
+
+        let mut input = String::new();
+
+        // Read input from stdin
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                let trimmed = input.trim();
+
+                // Check if input is empty (user pressed Enter)
+                if trimmed.is_empty() {
+                    println!("Proceeding with default board size.");
+                    return consts::DEFAULT_BOARD_SIZE;
+                }
+
+                // Try to parse the input as an integer
+                match trimmed.parse::<usize>() {
+                    Ok(number) => {
+                        if consts::VALID_BOARD_SIZES.contains(&number) {
+                            return number;
+                        } else {
+                            println!("Invalid input. Please enter a valid integer.")
+                        }
+                    }
+                    Err(_) => println!("Invalid input. Please enter a valid integer."),
+                }
+            }
+            Err(error) => {
+                println!("Error reading input: {}", error);
+                continue;
+            }
+        }
+    }
+}
+
 impl Player {
     fn other(&self) -> Player {
         match self {
@@ -32,6 +74,7 @@ impl Player {
 }
 
 struct GoBoard {
+    state: AppState,
     board_size: usize,
     board: Vec<Vec<Stone>>,
     current_player: Player,
@@ -44,6 +87,7 @@ struct GoBoard {
 impl Default for GoBoard {
     fn default() -> Self {
         Self {
+            state: AppState::Options,
             board_size: consts::DEFAULT_BOARD_SIZE,
             board: vec![vec![Stone::Empty; consts::DEFAULT_BOARD_SIZE]; consts::DEFAULT_BOARD_SIZE],
             current_player: Player::Black,
@@ -62,6 +106,7 @@ impl GoBoard {
 
     fn with_size(board_size_param: usize) -> Self {
         GoBoard {
+            state: AppState::Options,
             board_size: board_size_param,
             board: vec![vec![Stone::Empty; board_size_param]; board_size_param],
             current_player: Player::Black,
@@ -158,6 +203,7 @@ impl GoBoard {
         }
         false
     }
+
     fn would_group_be_captured(
         &self,
         group_row: usize,
@@ -177,8 +223,9 @@ impl GoBoard {
                 }
             }
         }
-        true // No liberties found
+        true
     }
+
     fn would_be_suicide(&self, row: usize, col: usize, player: Player) -> bool {
         let player_stone = player.to_stone();
         // Check if placing the stone would create a group with no liberties
@@ -197,8 +244,9 @@ impl GoBoard {
                 }
             }
         }
-        true // Would be suicide
+        true
     }
+
     fn would_friendly_group_have_liberties(
         &self,
         group_row: usize,
@@ -208,15 +256,17 @@ impl GoBoard {
         new_col: usize,
     ) -> bool {
         let group = self.get_group(group_row, group_col, group_stone);
+
+        // Check for empty spots (but not where we're placing the new stone)
         for &(r, c) in &group {
             for (nr, nc) in self.get_neighbors(r, c) {
-                // Check for empty spots (but not where we're placing the new stone)
                 if self.board[nr][nc] == Stone::Empty && !(nr == new_row && nc == new_col) {
                     return true;
                 }
             }
         }
-        // Also check the new stone's position for additional liberties
+
+        // Check the new stone's position for additional liberties
         for (nr, nc) in self.get_neighbors(new_row, new_col) {
             if self.board[nr][nc] == Stone::Empty {
                 return true;
@@ -229,8 +279,10 @@ impl GoBoard {
         if self.game_over || self.board[row][col] != Stone::Empty {
             return false;
         }
+
         // Check if the move would capture opponent stones
         let would_capture = self.would_capture_opponent(row, col, self.current_player);
+
         // If we wouldn't capture anything, check if it would be suicide
         if !would_capture && self.would_be_suicide(row, col, self.current_player) {
             return false;
@@ -244,6 +296,7 @@ impl GoBoard {
         }
         self.board[row][col] = self.current_player.to_stone();
         self.last_move = Some((row, col));
+
         // Capture opponent stones
         let opponent_stone = self.current_player.other().to_stone();
         let captured = self.capture_stones(opponent_stone);
@@ -258,10 +311,37 @@ impl GoBoard {
     fn pass_turn(&mut self) {
         self.current_player = self.current_player.other();
     }
-}
 
-impl eframe::App for GoBoard {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    // Actual GUI functions
+    fn show_options(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Go Game");
+
+            egui::ComboBox::from_label("Board Size")
+                .selected_text(format!("{} x {}", &self.board_size, &self.board_size))
+                .show_ui(ui, |ui| {
+                    for &selected_size in consts::VALID_BOARD_SIZES {
+                        if ui
+                            .selectable_label(
+                                self.board_size == selected_size,
+                                format!("{} x {}", &self.board_size, &self.board_size),
+                            )
+                            .clicked()
+                        {
+                            self.board_size = selected_size;
+                        }
+                    }
+                });
+
+            ui.separator();
+
+            if ui.button("Start Game").clicked() {
+                self.state = AppState::Game;
+            }
+        });
+    }
+
+    fn show_game(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Go Game");
             ui.horizontal(|ui| {
@@ -279,12 +359,14 @@ impl eframe::App for GoBoard {
                 }
             });
             ui.separator();
+
             // Calculate board dimensions
             let board_size = consts::CELL_SIZE * (self.board_size as f32 + 1.0);
             let (response, painter) =
                 ui.allocate_painter(egui::Vec2::splat(board_size), egui::Sense::click());
             let board_rect = response.rect;
             let top_left = board_rect.min + egui::Vec2::splat(consts::CELL_SIZE * 0.5);
+
             // Draw grid lines
             let line_color = egui::Color32::from_rgb(101, 67, 33);
             for i in 0..self.board_size {
@@ -294,7 +376,10 @@ impl eframe::App for GoBoard {
                     [
                         top_left + egui::Vec2::new(0.0, offset),
                         top_left
-                            + egui::Vec2::new((self.board_size - 1) as f32 * consts::CELL_SIZE, offset),
+                            + egui::Vec2::new(
+                                (self.board_size - 1) as f32 * consts::CELL_SIZE,
+                                offset,
+                            ),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
@@ -303,11 +388,15 @@ impl eframe::App for GoBoard {
                     [
                         top_left + egui::Vec2::new(offset, 0.0),
                         top_left
-                            + egui::Vec2::new(offset, (self.board_size - 1) as f32 * consts::CELL_SIZE),
+                            + egui::Vec2::new(
+                                offset,
+                                (self.board_size - 1) as f32 * consts::CELL_SIZE,
+                            ),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
             }
+
             // Draw star points (handicap points)
             let star_points: &[(usize, usize)];
             if self.board_size == consts::VALID_BOARD_SIZES[0] {
@@ -319,17 +408,24 @@ impl eframe::App for GoBoard {
             }
 
             for &(row, col) in star_points {
-                let pos =
-                    top_left + egui::Vec2::new(col as f32 * consts::CELL_SIZE, row as f32 * consts::CELL_SIZE);
+                let pos = top_left
+                    + egui::Vec2::new(
+                        col as f32 * consts::CELL_SIZE,
+                        row as f32 * consts::CELL_SIZE,
+                    );
                 painter.circle_filled(pos, 3.0, line_color);
             }
+
             // Draw stones
             for row in 0..self.board_size {
                 for col in 0..self.board_size {
                     let stone = self.board[row][col];
                     if stone != Stone::Empty {
                         let pos = top_left
-                            + egui::Vec2::new(col as f32 * consts::CELL_SIZE, row as f32 * consts::CELL_SIZE);
+                            + egui::Vec2::new(
+                                col as f32 * consts::CELL_SIZE,
+                                row as f32 * consts::CELL_SIZE,
+                            );
                         let stone_color = match stone {
                             Stone::Black => egui::Color32::BLACK,
                             Stone::White => egui::Color32::WHITE,
@@ -362,6 +458,7 @@ impl eframe::App for GoBoard {
                     }
                 }
             }
+
             // Handle clicks
             if response.clicked() {
                 if let Some(pos) = response.interact_pointer_pos() {
@@ -373,6 +470,7 @@ impl eframe::App for GoBoard {
                     }
                 }
             }
+
             // Show move validity hint
             if let Some(hover_pos) = response.hover_pos() {
                 let rel_pos = hover_pos - top_left;
@@ -382,8 +480,11 @@ impl eframe::App for GoBoard {
                     && col < self.board_size
                     && self.board[row][col] == Stone::Empty
                 {
-                    let pos =
-                        top_left + egui::Vec2::new(col as f32 * consts::CELL_SIZE, row as f32 * consts::CELL_SIZE);
+                    let pos = top_left
+                        + egui::Vec2::new(
+                            col as f32 * consts::CELL_SIZE,
+                            row as f32 * consts::CELL_SIZE,
+                        );
                     let is_valid = self.is_valid_move(row, col);
                     let preview_color = match self.current_player {
                         Player::Black => egui::Color32::from_rgba_premultiplied(0, 0, 0, 100),
@@ -398,41 +499,36 @@ impl eframe::App for GoBoard {
     }
 }
 
-fn get_board_size(prompt: &str) -> usize {
-    loop {
-        println!("{}", prompt);
-
-        let mut input = String::new();
-
-        // Read input from stdin
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
-                let trimmed = input.trim();
-
-                // Check if input is empty (user pressed Enter)
-                if trimmed.is_empty() {
-                    println!("Proceeding with default board size.");
-                    return consts::DEFAULT_BOARD_SIZE;
-                }
-
-                // Try to parse the input as an integer
-                match trimmed.parse::<usize>() {
-                    Ok(number) => {
-                        if consts::VALID_BOARD_SIZES.contains(&number) {
-                            return number;
-                        } else {
-                            println!("Invalid input. Please enter a valid integer.")
-                        }
-                    }
-                    Err(_) => println!("Invalid input. Please enter a valid integer."),
-                }
-            }
-            Err(error) => {
-                println!("Error reading input: {}", error);
-                continue;
-            }
+impl eframe::App for GoBoard {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        match self.state {
+            AppState::Options => self.show_options(ctx),
+            AppState::Game => self.show_game(ctx),
         }
     }
+
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {}
+
+    fn auto_save_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(30)
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // NOTE: a bright gray makes the shadows of the windows look weird.
+        // We use a bit of transparency so that if the user switches on the
+        // `transparent()` option they get immediate results.
+        egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
+
+        // _visuals.window_fill() would also be a natural choice
+    }
+
+    fn persist_egui_memory(&self) -> bool {
+        true
+    }
+
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, _raw_input: &mut egui::RawInput) {}
 }
 
 fn main() -> Result<(), eframe::Error> {
