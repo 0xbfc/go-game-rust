@@ -1,26 +1,7 @@
 use eframe::egui;
 use std::collections::HashSet;
 use std::io;
-
-const VALID_BOARD_SIZES: &[usize] = &[9, 13, 19];
-const STAR_POINTS_9X9: &[(usize, usize)] = &[(2, 2), (2, 6), (4, 4), (6, 2), (6, 6)];
-const STAR_POINTS_13X13: &[(usize, usize)] = &[(3, 3), (3, 9), (6, 6), (9, 3), (9, 9)];
-const STAR_POINTS_19X19: &[(usize, usize)] = &[
-    (3, 3),
-    (3, 9),
-    (3, 15),
-    (9, 3),
-    (9, 9),
-    (9, 15),
-    (15, 3),
-    (15, 9),
-    (15, 15),
-];
-const DEFAULT_BOARD_SIZE: usize = 19;
-const CELL_SIZE: f32 = 30.0;
-const STONE_RADIUS: f32 = 12.0;
-const TITLE: &str = "Go Game";
-const WINDOW_SIZE: [f32; 2] = [800.0, 850.0];
+mod consts;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Stone {
@@ -63,8 +44,8 @@ struct GoBoard {
 impl Default for GoBoard {
     fn default() -> Self {
         Self {
-            board_size: DEFAULT_BOARD_SIZE,
-            board: vec![vec![Stone::Empty; DEFAULT_BOARD_SIZE]; DEFAULT_BOARD_SIZE],
+            board_size: consts::DEFAULT_BOARD_SIZE,
+            board: vec![vec![Stone::Empty; consts::DEFAULT_BOARD_SIZE]; consts::DEFAULT_BOARD_SIZE],
             current_player: Player::Black,
             captured_black: 0,
             captured_white: 0,
@@ -299,21 +280,21 @@ impl eframe::App for GoBoard {
             });
             ui.separator();
             // Calculate board dimensions
-            let board_size = CELL_SIZE * (self.board_size as f32 + 1.0);
+            let board_size = consts::CELL_SIZE * (self.board_size as f32 + 1.0);
             let (response, painter) =
                 ui.allocate_painter(egui::Vec2::splat(board_size), egui::Sense::click());
             let board_rect = response.rect;
-            let top_left = board_rect.min + egui::Vec2::splat(CELL_SIZE * 0.5);
+            let top_left = board_rect.min + egui::Vec2::splat(consts::CELL_SIZE * 0.5);
             // Draw grid lines
             let line_color = egui::Color32::from_rgb(101, 67, 33);
             for i in 0..self.board_size {
-                let offset = i as f32 * CELL_SIZE;
+                let offset = i as f32 * consts::CELL_SIZE;
                 // Horizontal lines
                 painter.line_segment(
                     [
                         top_left + egui::Vec2::new(0.0, offset),
                         top_left
-                            + egui::Vec2::new((self.board_size - 1) as f32 * CELL_SIZE, offset),
+                            + egui::Vec2::new((self.board_size - 1) as f32 * consts::CELL_SIZE, offset),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
@@ -322,24 +303,24 @@ impl eframe::App for GoBoard {
                     [
                         top_left + egui::Vec2::new(offset, 0.0),
                         top_left
-                            + egui::Vec2::new(offset, (self.board_size - 1) as f32 * CELL_SIZE),
+                            + egui::Vec2::new(offset, (self.board_size - 1) as f32 * consts::CELL_SIZE),
                     ],
                     egui::Stroke::new(1.0, line_color),
                 );
             }
             // Draw star points (handicap points)
             let star_points: &[(usize, usize)];
-            if self.board_size == VALID_BOARD_SIZES[0] {
-                star_points = STAR_POINTS_9X9;
-            } else if self.board_size == VALID_BOARD_SIZES[1] {
-                star_points = STAR_POINTS_13X13;
+            if self.board_size == consts::VALID_BOARD_SIZES[0] {
+                star_points = consts::STAR_POINTS_9X9;
+            } else if self.board_size == consts::VALID_BOARD_SIZES[1] {
+                star_points = consts::STAR_POINTS_13X13;
             } else {
-                star_points = STAR_POINTS_19X19;
+                star_points = consts::STAR_POINTS_19X19;
             }
 
             for &(row, col) in star_points {
                 let pos =
-                    top_left + egui::Vec2::new(col as f32 * CELL_SIZE, row as f32 * CELL_SIZE);
+                    top_left + egui::Vec2::new(col as f32 * consts::CELL_SIZE, row as f32 * consts::CELL_SIZE);
                 painter.circle_filled(pos, 3.0, line_color);
             }
             // Draw stones
@@ -348,7 +329,7 @@ impl eframe::App for GoBoard {
                     let stone = self.board[row][col];
                     if stone != Stone::Empty {
                         let pos = top_left
-                            + egui::Vec2::new(col as f32 * CELL_SIZE, row as f32 * CELL_SIZE);
+                            + egui::Vec2::new(col as f32 * consts::CELL_SIZE, row as f32 * consts::CELL_SIZE);
                         let stone_color = match stone {
                             Stone::Black => egui::Color32::BLACK,
                             Stone::White => egui::Color32::WHITE,
@@ -357,15 +338,15 @@ impl eframe::App for GoBoard {
                         // Draw stone shadow
                         painter.circle_filled(
                             pos + egui::Vec2::new(1.0, 1.0),
-                            STONE_RADIUS,
+                            consts::STONE_RADIUS,
                             egui::Color32::from_rgba_premultiplied(0, 0, 0, 100),
                         );
                         // Draw stone
-                        painter.circle_filled(pos, STONE_RADIUS, stone_color);
+                        painter.circle_filled(pos, consts::STONE_RADIUS, stone_color);
                         // Draw stone border
                         painter.circle_stroke(
                             pos,
-                            STONE_RADIUS,
+                            consts::STONE_RADIUS,
                             egui::Stroke::new(1.0, egui::Color32::DARK_GRAY),
                         );
                         // Highlight last move
@@ -373,7 +354,7 @@ impl eframe::App for GoBoard {
                             if row == last_row && col == last_col {
                                 painter.circle_stroke(
                                     pos,
-                                    STONE_RADIUS + 3.0,
+                                    consts::STONE_RADIUS + 3.0,
                                     egui::Stroke::new(2.0, egui::Color32::RED),
                                 );
                             }
@@ -385,8 +366,8 @@ impl eframe::App for GoBoard {
             if response.clicked() {
                 if let Some(pos) = response.interact_pointer_pos() {
                     let rel_pos = pos - top_left;
-                    let col = ((rel_pos.x + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
-                    let row = ((rel_pos.y + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
+                    let col = ((rel_pos.x + consts::CELL_SIZE * 0.5) / consts::CELL_SIZE) as usize;
+                    let row = ((rel_pos.y + consts::CELL_SIZE * 0.5) / consts::CELL_SIZE) as usize;
                     if row < self.board_size && col < self.board_size {
                         self.make_move(row, col);
                     }
@@ -395,21 +376,21 @@ impl eframe::App for GoBoard {
             // Show move validity hint
             if let Some(hover_pos) = response.hover_pos() {
                 let rel_pos = hover_pos - top_left;
-                let col = ((rel_pos.x + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
-                let row = ((rel_pos.y + CELL_SIZE * 0.5) / CELL_SIZE) as usize;
+                let col = ((rel_pos.x + consts::CELL_SIZE * 0.5) / consts::CELL_SIZE) as usize;
+                let row = ((rel_pos.y + consts::CELL_SIZE * 0.5) / consts::CELL_SIZE) as usize;
                 if row < self.board_size
                     && col < self.board_size
                     && self.board[row][col] == Stone::Empty
                 {
                     let pos =
-                        top_left + egui::Vec2::new(col as f32 * CELL_SIZE, row as f32 * CELL_SIZE);
+                        top_left + egui::Vec2::new(col as f32 * consts::CELL_SIZE, row as f32 * consts::CELL_SIZE);
                     let is_valid = self.is_valid_move(row, col);
                     let preview_color = match self.current_player {
                         Player::Black => egui::Color32::from_rgba_premultiplied(0, 0, 0, 100),
                         Player::White => egui::Color32::from_rgba_premultiplied(255, 255, 255, 150),
                     };
                     if is_valid {
-                        painter.circle_filled(pos, STONE_RADIUS * 0.7, preview_color);
+                        painter.circle_filled(pos, consts::STONE_RADIUS * 0.7, preview_color);
                     }
                 }
             }
@@ -431,13 +412,13 @@ fn get_board_size(prompt: &str) -> usize {
                 // Check if input is empty (user pressed Enter)
                 if trimmed.is_empty() {
                     println!("Proceeding with default board size.");
-                    return DEFAULT_BOARD_SIZE;
+                    return consts::DEFAULT_BOARD_SIZE;
                 }
 
                 // Try to parse the input as an integer
                 match trimmed.parse::<usize>() {
                     Ok(number) => {
-                        if VALID_BOARD_SIZES.contains(&number) {
+                        if consts::VALID_BOARD_SIZES.contains(&number) {
                             return number;
                         } else {
                             println!("Invalid input. Please enter a valid integer.")
@@ -460,12 +441,12 @@ fn main() -> Result<(), eframe::Error> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size(WINDOW_SIZE)
-            .with_title(TITLE),
+            .with_inner_size(consts::WINDOW_SIZE)
+            .with_title(consts::TITLE),
         ..Default::default()
     };
     eframe::run_native(
-        TITLE,
+        consts::TITLE,
         options,
         Box::new(|_cc| Ok(Box::new(GoBoard::with_size(inputted_board_size)))),
     )
