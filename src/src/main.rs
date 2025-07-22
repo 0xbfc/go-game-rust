@@ -1,6 +1,5 @@
 use eframe::egui;
 use std::collections::HashSet;
-use std::io;
 mod consts;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -19,43 +18,6 @@ enum Player {
 enum AppState {
     Options,
     Game,
-}
-
-fn get_board_size(prompt: &str) -> usize {
-    loop {
-        println!("{}", prompt);
-
-        let mut input = String::new();
-
-        // Read input from stdin
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
-                let trimmed = input.trim();
-
-                // Check if input is empty (user pressed Enter)
-                if trimmed.is_empty() {
-                    println!("Proceeding with default board size.");
-                    return consts::DEFAULT_BOARD_SIZE;
-                }
-
-                // Try to parse the input as an integer
-                match trimmed.parse::<usize>() {
-                    Ok(number) => {
-                        if consts::VALID_BOARD_SIZES.contains(&number) {
-                            return number;
-                        } else {
-                            println!("Invalid input. Please enter a valid integer.")
-                        }
-                    }
-                    Err(_) => println!("Invalid input. Please enter a valid integer."),
-                }
-            }
-            Err(error) => {
-                println!("Error reading input: {}", error);
-                continue;
-            }
-        }
-    }
 }
 
 impl Player {
@@ -100,11 +62,11 @@ impl Default for GoBoard {
 }
 
 impl GoBoard {
-    fn _new() -> Self {
+    fn new() -> Self {
         Self::default()
     }
 
-    fn with_size(board_size_param: usize) -> Self {
+    fn _with_size(board_size_param: usize) -> Self {
         GoBoard {
             state: AppState::Options,
             board_size: board_size_param,
@@ -321,13 +283,10 @@ impl GoBoard {
                 .selected_text(format!("{} x {}", &self.board_size, &self.board_size))
                 .show_ui(ui, |ui| {
                     for &selected_size in consts::VALID_BOARD_SIZES {
-                        if ui
-                            .selectable_label(
-                                self.board_size == selected_size,
-                                format!("{} x {}", &self.board_size, &self.board_size),
-                            )
-                            .clicked()
-                        {
+                        let is_selected: bool = self.board_size == selected_size;
+                        let label = format!("{} x {}", selected_size, selected_size);
+
+                        if ui.selectable_label(is_selected, label).clicked() {
                             self.board_size = selected_size;
                         }
                     }
@@ -532,9 +491,6 @@ impl eframe::App for GoBoard {
 }
 
 fn main() -> Result<(), eframe::Error> {
-    let inputted_board_size =
-        get_board_size("Please enter a board size of 9, 13, or 19 (press Enter for 19): ");
-
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(consts::WINDOW_SIZE)
@@ -544,6 +500,6 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         consts::TITLE,
         options,
-        Box::new(|_cc| Ok(Box::new(GoBoard::with_size(inputted_board_size)))),
+        Box::new(|_cc| Ok(Box::new(GoBoard::new()))),
     )
 }
